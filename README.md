@@ -164,8 +164,6 @@ Type help or ? to list commands.
 ```
 10. SolarWinds.BusinessLayerHost.exe will reach out to the HTTP C2 server and fetch its first backdoor command.
 ```
-C:\Users\User\source\repos\Sunburst\C2Server\venv\Scripts\python.exe C:/Users/User/source/repos/Sunburst/C2Server/sunburst_httpc2.py
-
                     ___                          __    /\      __    __                ________  
   ________ __  ____ \_ |__  __ _________  ______/  |_ |  |__ _/  |__/  |_______   ____ \_____  \ 
  /  ___/  |  \/    \ | __ \|  |  \_  __ \/  ___/   __\|  |  \\   __\   __\____ \_/ ___\ /  ____/ 
