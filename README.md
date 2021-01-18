@@ -93,6 +93,8 @@ SunburstC2Server is a proof of concept DNS and HTTP C2 servers for the SUNBURST 
 Also included is a version of SUNBURST that is convenient for testing this C2 implementation. Delays are drastically shortened and anti-analysis checks are not performed.
 This C2 server would work with the unmodified sample, but waiting days to execute calc is no fun :)
 
+[Accompanying research](https://secureiqlab.com/wp-content/uploads/2021/01/Sunburst-Research.pdf)
+
 <!-- 
 ### Built With
 
